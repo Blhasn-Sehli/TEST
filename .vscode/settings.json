@@ -58,6 +58,9 @@
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "files.associations": {
     "sdl.h": "c",
-    "time.h": "c"
+    "time.h": "c",
+    "string.h": "c",
+    "stdlib.h": "c",
+    "sdl_ttf.h": "c"
   }
 }

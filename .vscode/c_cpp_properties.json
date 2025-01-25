@@ -3,7 +3,9 @@
     {
       "name": "windows-gcc-x64",
       "includePath": [
-        "${workspaceFolder}/**"
+        "${workspaceFolder}/**",
+        "C:/Users/sehli/Desktop/maze/TEST/sdlttf/include",
+        "C:/Users/sehli/Desktop/maze/TEST/SDL2/include"
       ],
       "compilerPath": "C:/msys64/ucrt64/bin/gcc.exe",
       "cStandard": "${default}",
