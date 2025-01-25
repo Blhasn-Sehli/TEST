@@ -8,7 +8,7 @@
 #define HEIGHT 10
 #define CELL_SIZE 50
 #define MAX_WORD_LENGTH 50
-#define MAX_WORDS 1000
+#define MAX_WORDS 5
 
 typedef struct Node
 {
@@ -48,6 +48,7 @@ int loadDictionary(char dictionary[MAX_WORDS][MAX_WORD_LENGTH], const char *file
     fclose(file);
     return count;
 }
+//afficher le dictionnaire 
 
 // Générer la grille à partir du dictionnaire
 void generateGraph(Graph *graph, char dictionary[MAX_WORDS][MAX_WORD_LENGTH], int wordCount)
