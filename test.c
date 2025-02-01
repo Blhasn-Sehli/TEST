@@ -5,6 +5,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
+#define EMPTY ' '
 #define GRID_SIZE 15      // Taille de la grille
 #define CELL_SIZE 20      // Taille d'une cellule dans l'interface graphique
 #define WINDOW_SIZE (GRID_SIZE * CELL_SIZE) // Taille de la fenêtre
@@ -41,60 +42,8 @@ void initialize_maze(Maze *maze) {
     } while (maze->grid[maze->endX][maze->endY] == '#' || (maze->endX == maze->startX && maze->endY == maze->startY)); // Vérifier qu'il n'y a pas de mur et qu'il ne se trouve pas sur le point de départ
 }
 
-// Ajoute un mur dans la grille
-void add_wall(Maze *maze, int x1, int y1, int x2, int y2, int passage_x, int passage_y) {
-    if (x1 == x2) { // Mur horizontal
-        for (int y = y1; y <= y2; y++) {
-            if (y != passage_y) {
-                maze->grid[x1][y] = '#';
-            }
-        }
-    } else if (y1 == y2) { // Mur vertical
-        for (int x = x1; x <= x2; x++) {
-            if (x != passage_x) {
-                maze->grid[x][y1] = '#';
-            }
-        }
-    }
-}
 
-// Division récursive pour générer le labyrinthe
-void divide(Maze *maze, int x1, int y1, int x2, int y2) {
-    int width = x2 - x1;
-    int height = y2 - y1;
-
-    if (width < 2 || height < 2) {
-        return; // Condition d'arrêt
-    }
-
-    int horizontal = rand() % 2; // Décider de couper horizontalement ou verticalement
-
-    if (width > height) {
-        horizontal = 0; // Forcer une coupe verticale si la largeur est plus grande
-    } else if (height > width) {
-        horizontal = 1; // Forcer une coupe horizontale si la hauteur est plus grande
-    }
-
-    if (horizontal) {
-        // Coupe horizontale
-        int y_cut = y1 + 1 + rand() % (height - 1);
-        int passage_x = x1 + rand() % width;
-        add_wall(maze, y_cut, y1, y_cut, y2, passage_x, y_cut);
-
-        divide(maze, x1, y1, x2, y_cut - 1);
-        divide(maze, x1, y_cut + 1, x2, y2);
-    } else {
-        // Coupe verticale
-        int x_cut = x1 + 1 + rand() % (width - 1);
-        int passage_y = y1 + rand() % height;
-        add_wall(maze, x1, x_cut, x2, x_cut, x_cut, passage_y);
-
-        divide(maze, x1, y1, x_cut - 1, y2);
-        divide(maze, x_cut + 1, y1, x2, y2);
-    }
-}
-
-// Place une lettre aléatoire dans les cellules vides
+// // Place une lettre aléatoire dans les cellules vides
 void add_random_letters(Maze *maze) {
     for (int i = 0; i < GRID_SIZE; i++) {
         for (int j = 0; j < GRID_SIZE; j++) {
@@ -104,6 +53,9 @@ void add_random_letters(Maze *maze) {
         }
     }
 }
+
+
+
 
 // Charge un dictionnaire de mots depuis un fichier
 int load_words(const char *filename, char words[][20], int max_words) {
@@ -122,25 +74,110 @@ int load_words(const char *filename, char words[][20], int max_words) {
     return count;
 }
 
-// Place un mot dans le labyrinthe
-void place_word(Maze *maze, const char *word) {
-    int len = strlen(word);
-    int horizontal = rand() % 2; // Horizontal ou vertical
-    int x = rand() % GRID_SIZE;
-    int y = rand() % GRID_SIZE;
 
-    for (int i = 0; i < len; i++) {
-        if (horizontal) {
-            if (y + i < GRID_SIZE) {
-                maze->grid[x][y + i] = word[i];
+
+
+
+// Vérifie si on peut placer un mot dans la position donnée
+int can_place_word(Maze *maze, const char *word, int x, int y, int horizontal) {
+    int len = strlen(word);
+
+    if (horizontal) {
+        if (y + len > GRID_SIZE) return 0; // Dépasse la bordure
+        for (int i = 0; i < len; i++) {
+            if (maze->grid[x][y + i] != EMPTY) return 0; // Collision
+        }
+    } else {
+        if (x + len > GRID_SIZE) return 0; // Dépasse la bordure
+        for (int i = 0; i < len; i++) {
+            if (maze->grid[x + i][y] != EMPTY) return 0; // Collision
+        }
+    }
+
+    return 1; // Placement possible
+}
+
+// Place un mot en s'assurant qu'il est entier et bien aligné
+int try_place_word(Maze *maze, const char *word) {
+    int len = strlen(word);
+    int attempts = 100;
+
+    while (attempts-- > 0) {
+        int horizontal = rand() % 2;
+        int x = rand() % GRID_SIZE;
+        int y = rand() % GRID_SIZE;
+
+        if (can_place_word(maze, word, x, y, horizontal)) {
+            for (int i = 0; i < len; i++) {
+                if (horizontal) {
+                    maze->grid[x][y + i] = word[i];
+                } else {
+                    maze->grid[x + i][y] = word[i];
+                }
             }
-        } else {
-            if (x + i < GRID_SIZE) {
-                maze->grid[x + i][y] = word[i];
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Place plusieurs mots dans le labyrinthe
+void place_words(Maze *maze, const char *words[], int word_count) {
+    for (int i = 0; i < word_count; i++) {
+        if (!try_place_word(maze, words[i])) {
+            printf("⚠️ Impossible de placer le mot: %s\n", words[i]);
+        }
+    }
+}
+
+void add_wall(Maze *maze, int x1, int y1, int x2, int y2, int passage_x, int passage_y) {
+    if (x1 == x2) {
+        for (int y = y1; y <= y2; y++) {
+            if (y != passage_y && maze->grid[x1][y] == EMPTY) {
+                maze->grid[x1][y] = '#';
+            }
+        }
+    } else if (y1 == y2) {
+        for (int x = x1; x <= x2; x++) {
+            if (x != passage_x && maze->grid[x][y1] == EMPTY) {
+                maze->grid[x][y1] = '#';
             }
         }
     }
 }
+
+void divide(Maze *maze, int x1, int y1, int x2, int y2) {
+    int width = x2 - x1;
+    int height = y2 - y1;
+
+    if (width < 2 || height < 2) return;
+
+    int horizontal = rand() % 2;
+    if (width > height) horizontal = 0;
+    if (height > width) horizontal = 1;
+
+    if (horizontal) {
+        int y_cut = y1 + 1 + rand() % (height - 1);
+        int passage_x = x1 + rand() % width;
+        add_wall(maze, x1, y_cut, x2, y_cut, passage_x, y_cut);
+
+        divide(maze, x1, y1, x2, y_cut - 1);
+        divide(maze, x1, y_cut + 1, x2, y2);
+    } else {
+        int x_cut = x1 + 1 + rand() % (width - 1);
+        int passage_y = y1 + rand() % height;
+        add_wall(maze, x_cut, y1, x_cut, y2, x_cut, passage_y);
+
+        divide(maze, x1, y1, x_cut - 1, y2);
+        divide(maze, x_cut + 1, y1, x2, y2);
+    }
+}
+
+
+
+
+
+
 
 // Dessine le labyrinthe avec lettres et murs
 // Dessiner le labyrinthe avec lettres, murs, point de départ et point d'arrivée
@@ -201,12 +238,6 @@ void move_player(Player *player, Maze *maze, int dx, int dy) {
     if (new_x >= 0 && new_x < GRID_SIZE && new_y >= 0 && new_y < GRID_SIZE && maze->grid[new_x][new_y] != '#') {
         player->x = new_x;
         player->y = new_y;
-
-        // If the new position contains a letter, increase the score and remove the letter
-        if (maze->grid[player->x][player->y] != ' ') {
-            player->score += 10; // Increase score by 10 for each letter collected
-            maze->grid[player->x][player->y] = ' '; // Clear the letter
-        }
     }
 }
 
@@ -216,19 +247,54 @@ int main(int argc, char *argv[]) {
 
     Maze maze;
     initialize_maze(&maze);
-    divide(&maze, 0, 0, GRID_SIZE - 1, GRID_SIZE - 1);
+    // divide(&maze, 0, 0, GRID_SIZE - 1, GRID_SIZE - 1);
 
     // Charger les mots depuis le fichier dictionnaire.txt
     char words[100][20];  // Tableau pour stocker jusqu'à 100 mots
     int word_count = load_words("dictionnaire.txt", words, 5);
 
-    // Placer les mots dans le labyrinthe
+    const char *word_ptrs[5];
     for (int i = 0; i < word_count; i++) {
-        place_word(&maze, words[i]);
+        word_ptrs[i] = words[i];
     }
 
-    // Ajout de lettres aléatoires pour les cases restantes
-    add_random_letters(&maze);
+    place_words(&maze, word_ptrs, word_count);
+     //afficher la maze avnat divide   sous forme de matrice
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            //ajouter un espace entre les lettres pour une meilleure lisibilité
+            printf("%c |", maze.grid[i][j]);
+
+        }
+        printf("\n");
+    }
+
+    divide(&maze, 0, 0, GRID_SIZE - 1, GRID_SIZE - 1);
+    printf("\n");
+
+
+    //afficher la maze  aprés divide  sous forme de matrice
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            //ajouter un espace entre les lettres pour une meilleure lisibilité
+            printf("%c |", maze.grid[i][j]);
+
+        }
+        printf("\n");
+    }
+    printf("\n");
+
+     //afficher la maze  sous forme de matrice
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            //ajouter un espace entre les lettres pour une meilleure lisibilité
+            printf("%c |", maze.grid[i][j]);
+
+        }
+        printf("\n");
+    }
+    
+   
 
     // Initialiser SDL et SDL_ttf
     SDL_Init(SDL_INIT_VIDEO);

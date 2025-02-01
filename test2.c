@@ -5,251 +5,278 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
-#define GRID_SIZE 15      // Taille de la grille
-#define CELL_SIZE 20      // Taille d'une cellule dans l'interface graphique
-#define WINDOW_SIZE (GRID_SIZE * CELL_SIZE) // Taille de la fenêtre
+#define GRID_SIZE 15       // Size of the grid (x by y dimensions)
+#define CELL_SIZE 20       // Size of each cell in the GUI
+#define WINDOW_SIZE (GRID_SIZE * CELL_SIZE) // Window size
+
+typedef struct Node {
+    int x, y;                 // Position of the node
+    struct Node **neighbors;  // Array of adjacent nodes
+    int neighbor_count;       // Number of neighbors (valid connections)
+    char letter;              // Letter to place in the cell
+} Node;
 
 typedef struct {
-    char grid[GRID_SIZE][GRID_SIZE]; // Grille contenant les murs et lettres
-    int startX, startY;              // Position de départ
-    int endX, endY;                  // Position d'arrivée
-} Maze;
+    Node **nodes;     // Array of all nodes (vertices)
+    int node_count;   // Number of nodes in the graph
+    Node *start;      // Start node
+    Node *end;        // End node
+} Graph;
 
 typedef struct {
     int x, y;         // Player's position
     int score;        // Player's score
 } Player;
 
-
-// Initialise le labyrinthe avec des espaces vides
-void initialize_maze(Maze *maze) {
-    for (int i = 0; i < GRID_SIZE; i++) {
-        for (int j = 0; j < GRID_SIZE; j++) {
-            maze->grid[i][j] = ' '; // Espaces vides
-        }
-    }
-
-    // Placer les points de départ et d'arrivée
-    do {
-        maze->startX = rand() % GRID_SIZE;
-        maze->startY = rand() % GRID_SIZE;
-    } while (maze->grid[maze->startX][maze->startY] == '#'); // Vérifier qu'il n'y a pas de mur
-
-    do {
-        maze->endX = rand() % GRID_SIZE;
-        maze->endY = rand() % GRID_SIZE;
-    } while (maze->grid[maze->endX][maze->endY] == '#' || (maze->endX == maze->startX && maze->endY == maze->startY)); // Vérifier qu'il n'y a pas de mur et qu'il ne se trouve pas sur le point de départ
+// Function to create a new node (graph vertex)
+Node *create_node(int x, int y) {
+    Node *node = (Node *)malloc(sizeof(Node));
+    node->x = x;
+    node->y = y;
+    node->letter = ' ';   // Empty letter
+    node->neighbors = NULL;
+    node->neighbor_count = 0;
+    return node;
 }
 
-// Ajoute un mur dans la grille
-void add_wall(Maze *maze, int x1, int y1, int x2, int y2, int passage_x, int passage_y) {
-    if (x1 == x2) { // Mur horizontal
-        for (int y = y1; y <= y2; y++) {
-            if (y != passage_y) {
-                maze->grid[x1][y] = '#';
-            }
-        }
-    } else if (y1 == y2) { // Mur vertical
-        for (int x = x1; x <= x2; x++) {
-            if (x != passage_x) {
-                maze->grid[x][y1] = '#';
-            }
-        }
-    }
+// Function to create a graph
+Graph *create_graph() {
+    Graph *graph = (Graph *)malloc(sizeof(Graph));
+    graph->nodes = (Node **)malloc(GRID_SIZE * GRID_SIZE * sizeof(Node *));
+    graph->node_count = 0;
+    graph->start = NULL;
+    graph->end = NULL;
+    return graph;
 }
 
-// Division récursive pour générer le labyrinthe
-void divide(Maze *maze, int x1, int y1, int x2, int y2) {
-    int width = x2 - x1;
-    int height = y2 - y1;
-
-    if (width < 2 || height < 2) {
-        return; // Condition d'arrêt
-    }
-
-    int horizontal = rand() % 2; // Décider de couper horizontalement ou verticalement
-
-    if (width > height) {
-        horizontal = 0; // Forcer une coupe verticale si la largeur est plus grande
-    } else if (height > width) {
-        horizontal = 1; // Forcer une coupe horizontale si la hauteur est plus grande
-    }
-
-    if (horizontal) {
-        // Coupe horizontale
-        int y_cut = y1 + 1 + rand() % (height - 1);
-        int passage_x = x1 + rand() % width;
-        add_wall(maze, y_cut, y1, y_cut, y2, passage_x, y_cut);
-
-        divide(maze, x1, y1, x2, y_cut - 1);
-        divide(maze, x1, y_cut + 1, x2, y2);
-    } else {
-        // Coupe verticale
-        int x_cut = x1 + 1 + rand() % (width - 1);
-        int passage_y = y1 + rand() % height;
-        add_wall(maze, x1, x_cut, x2, x_cut, x_cut, passage_y);
-
-        divide(maze, x1, y1, x_cut - 1, y2);
-        divide(maze, x_cut + 1, y1, x2, y2);
-    }
+// Function to add a node to the graph
+void add_node(Graph *graph, Node *node) {
+    graph->nodes[graph->node_count++] = node;
 }
 
-// Place une lettre aléatoire dans les cellules vides
-void add_random_letters(Maze *maze) {
-    for (int i = 0; i < GRID_SIZE; i++) {
-        for (int j = 0; j < GRID_SIZE; j++) {
-            if (maze->grid[i][j] == ' ') {
-                maze->grid[i][j] = 'a' + rand() % 26; // Lettres aléatoires
-            }
+// Function to add an edge between two nodes
+void add_edge(Node *node1, Node *node2) {
+    node1->neighbors = (Node **)realloc(node1->neighbors, (node1->neighbor_count + 1) * sizeof(Node *));
+    node1->neighbors[node1->neighbor_count++] = node2;
+    node2->neighbors = (Node **)realloc(node2->neighbors, (node2->neighbor_count + 1) * sizeof(Node *));
+    node2->neighbors[node2->neighbor_count++] = node1;
+}
+
+// Function to initialize the graph with nodes
+void initialize_graph(Graph *graph) {
+    for (int x = 0; x < GRID_SIZE; x++) {
+        for (int y = 0; y < GRID_SIZE; y++) {
+            Node *node = create_node(x, y);
+            add_node(graph, node);
+
+            // Connect the node to its adjacent neighbors (up, down, left, right)
+            if (x > 0) add_edge(node, graph->nodes[(x - 1) * GRID_SIZE + y]);  // Up
+            if (x < GRID_SIZE - 1) add_edge(node, graph->nodes[(x + 1) * GRID_SIZE + y]);  // Down
+            if (y > 0) add_edge(node, graph->nodes[x * GRID_SIZE + (y - 1)]);  // Left
+            if (y < GRID_SIZE - 1) add_edge(node, graph->nodes[x * GRID_SIZE + (y + 1)]);  // Right
         }
     }
 }
 
-// Charge un dictionnaire de mots depuis un fichier
-int load_words(const char *filename, char words[][20], int max_words) {
-    FILE *file = fopen(filename, "r");
-    if (!file) {
-        printf("Erreur : impossible d'ouvrir le fichier %s\n", filename);
-        return 0;
-    }
-
-    int count = 0;
-    while (fscanf(file, "%19s", words[count]) == 1 && count < max_words) {
-        count++;
-    }
-
-    fclose(file);
-    return count;
+// Function to randomly place a start and end point in the graph
+void set_start_end(Graph *graph) {
+    graph->start = graph->nodes[rand() % graph->node_count];
+    graph->end = graph->nodes[rand() % graph->node_count];
 }
 
-// Place un mot dans le labyrinthe
-void place_word(Maze *maze, const char *word) {
-    int len = strlen(word);
-    int horizontal = rand() % 2; // Horizontal ou vertical
-    int x = rand() % GRID_SIZE;
-    int y = rand() % GRID_SIZE;
-
-    for (int i = 0; i < len; i++) {
-        if (horizontal) {
-            if (y + i < GRID_SIZE) {
-                maze->grid[x][y + i] = word[i];
-            }
-        } else {
-            if (x + i < GRID_SIZE) {
-                maze->grid[x + i][y] = word[i];
-            }
+// Function to place random letters in the graph
+void place_random_letters(Graph *graph) {
+    for (int i = 0; i < graph->node_count; i++) {
+        if (graph->nodes[i] != graph->start && graph->nodes[i] != graph->end) {
+            graph->nodes[i]->letter = 'a' + rand() % 26;  // Random letter
         }
     }
 }
 
-// Dessine le labyrinthe avec lettres et murs
-// Dessiner le labyrinthe avec lettres, murs, point de départ et point d'arrivée
-void draw_maze(SDL_Renderer *renderer, TTF_Font *font, Maze *maze) {
-    for (int i = 0; i < GRID_SIZE; i++) {
-        for (int j = 0; j < GRID_SIZE; j++) {
-            SDL_Rect cell = {j * CELL_SIZE, i * CELL_SIZE, CELL_SIZE, CELL_SIZE};
+// Function to divide the graph into sections, adding walls
+// Function to divide the graph by removing edges between sections
+void divide_graph(Graph *graph, int startX, int startY, int endX, int endY) {
+    // Base case: if the section is too small to divide, return
+    if (endX - startX <= 2 || endY - startY <= 2) {
+        return;
+    }
 
-            if (maze->grid[i][j] == '#') {
-                // Dessiner un mur taille de la cellule de mur 
-                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Mur noir
-                SDL_RenderFillRect(renderer, &cell);
-            } else {
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // Fond blanc
-                SDL_RenderFillRect(renderer, &cell);
+    // Randomly decide whether to divide vertically or horizontally
+    if (rand() % 2 == 0) {
+        // Vertical division
+        int divideX = startX + rand() % (endX - startX - 1) + 1;
 
-                // Dessiner la lettre
-                if (maze->grid[i][j] != ' ') {
-                    char letter[2] = {maze->grid[i][j], '\0'};
-                    SDL_Color textColor = {0, 0, 0}; // Noir
-                    SDL_Surface *textSurface = TTF_RenderText_Solid(font, letter, textColor);
-                    SDL_Texture *textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
-                    int textW, textH;
-                    SDL_QueryTexture(textTexture, NULL, NULL, &textW, &textH);
-                    SDL_Rect textRect = {cell.x + (CELL_SIZE - textW) / 2, cell.y + (CELL_SIZE - textH) / 2, textW, textH};
-                    SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
-                    SDL_DestroyTexture(textTexture);
-                    SDL_FreeSurface(textSurface);
+        // Remove edges to divide the maze
+        for (int y = startY; y < endY; y++) {
+            Node *node1 = graph->nodes[divideX * GRID_SIZE + y];
+            Node *node2 = graph->nodes[(divideX + 1) * GRID_SIZE + y];
+
+            // Remove the edge between the two adjacent nodes
+            for (int i = 0; i < node1->neighbor_count; i++) {
+                if (node1->neighbors[i] == node2) {
+                    node1->neighbors[i] = node1->neighbors[node1->neighbor_count - 1];
+                    node1->neighbor_count--;
+                    break;
+                }
+            }
+
+            for (int i = 0; i < node2->neighbor_count; i++) {
+                if (node2->neighbors[i] == node1) {
+                    node2->neighbors[i] = node2->neighbors[node2->neighbor_count - 1];
+                    node2->neighbor_count--;
+                    break;
                 }
             }
         }
+
+        // Recursively divide the sections on either side of the vertical division
+        divide_graph(graph, startX, startY, divideX, endY);
+        divide_graph(graph, divideX, startY, endX, endY);
+
+    } else {
+        // Horizontal division
+        int divideY = startY + rand() % (endY - startY - 1) + 1;
+
+        // Remove edges to divide the maze
+        for (int x = startX; x < endX; x++) {
+            Node *node1 = graph->nodes[x * GRID_SIZE + divideY];
+            Node *node2 = graph->nodes[x * GRID_SIZE + divideY + 1];
+
+            // Remove the edge between the two adjacent nodes
+            for (int i = 0; i < node1->neighbor_count; i++) {
+                if (node1->neighbors[i] == node2) {
+                    node1->neighbors[i] = node1->neighbors[node1->neighbor_count - 1];
+                    node1->neighbor_count--;
+                    break;
+                }
+            }
+
+            for (int i = 0; i < node2->neighbor_count; i++) {
+                if (node2->neighbors[i] == node1) {
+                    node2->neighbors[i] = node2->neighbors[node2->neighbor_count - 1];
+                    node2->neighbor_count--;
+                    break;
+                }
+            }
+        }
+
+        // Recursively divide the sections above and below the horizontal division
+        divide_graph(graph, startX, startY, endX, divideY);
+        divide_graph(graph, startX, divideY, endX, endY);
     }
-
-    // Dessiner le point de départ
-    SDL_Rect startRect = {maze->startY * CELL_SIZE, maze->startX * CELL_SIZE, CELL_SIZE, CELL_SIZE};
-    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // Vert pour le point de départ
-    SDL_RenderFillRect(renderer, &startRect);
-
-    // Dessiner le point d'arrivée
-    SDL_Rect endRect = {maze->endY * CELL_SIZE, maze->endX * CELL_SIZE, CELL_SIZE, CELL_SIZE};
-    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255); // Rouge pour le point d'arrivée
-    SDL_RenderFillRect(renderer, &endRect);
 }
 
-void initialize_player(Player *player, Maze *maze) {
-    // Placer le joueur au point de départ
-    player->x = maze->startX;
-    player->y = maze->startY;
+
+// Function to place words in the graph
+void place_words(Graph *graph, const char *words[], int word_count) {
+    for (int i = 0; i < word_count; i++) {
+        // Try to place the word, if it fits, you can connect nodes in sequence for the word
+        printf("Placing word: %s\n", words[i]);
+        // For each word, find a starting node and connect it along the word's path
+    }
+}
+
+// Initialize the player
+void initialize_player(Player *player, Graph *graph) {
+    player->x = graph->start->x;
+    player->y = graph->start->y;
     player->score = 0;
 }
 
-
-void move_player(Player *player, Maze *maze, int dx, int dy) {
+// Function to move the player in the graph
+void move_player(Player *player, Graph *graph, int dx, int dy) {
     int new_x = player->x + dx;
     int new_y = player->y + dy;
-
-    // Check if the new position is within bounds and not a wall
-    if (new_x >= 0 && new_x < GRID_SIZE && new_y >= 0 && new_y < GRID_SIZE && maze->grid[new_x][new_y] != '#') {
-        player->x = new_x;
-        player->y = new_y;
-
-        // If the new position contains a letter, increase the score and remove the letter
-        if (maze->grid[player->x][player->y] != ' ') {
-            player->score += 10; // Increase score by 10 for each letter collected
-            maze->grid[player->x][player->y] = ' '; // Clear the letter
+    
+    // Find the corresponding node in the graph for the new position
+    for (int i = 0; i < graph->node_count; i++) {
+        Node *node = graph->nodes[i];
+        if (node->x == new_x && node->y == new_y) {
+            player->x = new_x;
+            player->y = new_y;
+            // If there's a letter, increment score
+            if (node->letter != ' ') {
+                player->score += 10;
+                node->letter = ' ';  // Clear the letter after collecting
+            }
+            break;
         }
     }
 }
 
+void draw_graph(SDL_Renderer *renderer, TTF_Font *font, Graph *graph) {
+    for (int i = 0; i < graph->node_count; i++) {
+        Node *node = graph->nodes[i];
+        SDL_Rect cell = {node->y * CELL_SIZE, node->x * CELL_SIZE, CELL_SIZE, CELL_SIZE};
+        
+        // Draw background (empty or wall)
+        if (node->letter == ' ') {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);  // White for empty cells
+            SDL_RenderFillRect(renderer, &cell);
+        } else {
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);  // Black for walls
+            SDL_RenderFillRect(renderer, &cell);
+        }
+
+        // Draw letter
+        if (node->letter != ' ') {
+            char letter[2] = {node->letter, '\0'};
+            SDL_Color textColor = {0, 0, 0};  // Black
+            SDL_Surface *textSurface = TTF_RenderText_Solid(font, letter, textColor);
+            SDL_Texture *textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+            int textW, textH;
+            SDL_QueryTexture(textTexture, NULL, NULL, &textW, &textH);
+            SDL_Rect textRect = {cell.x + (CELL_SIZE - textW) / 2, cell.y + (CELL_SIZE - textH) / 2, textW, textH};
+            SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+            SDL_DestroyTexture(textTexture);
+            SDL_FreeSurface(textSurface);
+        }
+    }
+
+    // Draw start and end points
+    SDL_Rect startRect = {graph->start->y * CELL_SIZE, graph->start->x * CELL_SIZE, CELL_SIZE, CELL_SIZE};
+    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);  // Green for start
+    SDL_RenderFillRect(renderer, &startRect);
+
+    SDL_Rect endRect = {graph->end->y * CELL_SIZE, graph->end->x * CELL_SIZE, CELL_SIZE, CELL_SIZE};
+    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);  // Red for end
+    SDL_RenderFillRect(renderer, &endRect);
+}
 
 int main(int argc, char *argv[]) {
     srand(time(NULL));
 
-    Maze maze;
-    initialize_maze(&maze);
-    divide(&maze, 0, 0, GRID_SIZE - 1, GRID_SIZE - 1);
-
-    // Charger les mots depuis le fichier dictionnaire.txt
-    char words[100][20];  // Tableau pour stocker jusqu'à 100 mots
-    int word_count = load_words("dictionnaire.txt", words, 5);
-
-    // Placer les mots dans le labyrinthe
-    for (int i = 0; i < word_count; i++) {
-        place_word(&maze, words[i]);
+    // Initialize the graph
+    Graph *graph = create_graph();
+    initialize_graph(graph);
+    set_start_end(graph);
+    //afficher le graphe pour voir les points de départ et d'arrivée
+    for (int i = 0; i < graph->node_count; i++) {
+        Node *node = graph->nodes[i];
+        printf("Node: (%d, %d)\n", node->x, node->y);
     }
+    divide_graph(graph, 0, 0, GRID_SIZE, GRID_SIZE);
+    //afficher aprés la division
+    for (int i = 0; i < graph->node_count; i++) {
+        Node *node = graph->nodes[i];
+        printf("Node: (%d, %d)\n", node->x, node->y);
+    } 
 
-    // Ajout de lettres aléatoires pour les cases restantes
-    add_random_letters(&maze);
+    place_random_letters(graph);
 
-    // Initialiser SDL et SDL_ttf
+    // Place words in the graph
+    const char *words[] = {"HELLO", "WORLD"};
+    place_words(graph, words, 2);
+
+    // Initialize SDL and the player
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
-
-    SDL_Window *window = SDL_CreateWindow("Labyrinthe avec lettres", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_SIZE, WINDOW_SIZE, SDL_WINDOW_SHOWN);
+    SDL_Window *window = SDL_CreateWindow("Graph Maze with Words", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_SIZE, WINDOW_SIZE, SDL_WINDOW_SHOWN);
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     TTF_Font *font = TTF_OpenFont("arial.ttf", 20);
 
-    if (!font) {
-        printf("Erreur : Impossible de charger la police.\n");
-        return -1;
-    }
-
-    // Initialiser le joueur
     Player player;
-    initialize_player(&player, &maze);
-
-    // Variables de mouvement
-    Uint32 lastMoveTime = 0;
-    Uint32 moveDelay = 150; // 150 ms de délai entre les déplacements
+    initialize_player(&player, graph);
 
     int running = 1;
     SDL_Event event;
@@ -261,58 +288,25 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        Uint32 currentTime = SDL_GetTicks();
-        if (currentTime - lastMoveTime > moveDelay) {
-            const Uint8 *keystate = SDL_GetKeyboardState(NULL);
+        // Player movement logic (based on keyboard input)
+        const Uint8 *keystate = SDL_GetKeyboardState(NULL);
+        if (keystate[SDL_SCANCODE_UP]) move_player(&player, graph, -1, 0);  // Move up
+        if (keystate[SDL_SCANCODE_DOWN]) move_player(&player, graph, 1, 0);  // Move down
+        if (keystate[SDL_SCANCODE_LEFT]) move_player(&player, graph, 0, -1); // Move left
+        if (keystate[SDL_SCANCODE_RIGHT]) move_player(&player, graph, 0, 1); // Move right
 
-            if (keystate[SDL_SCANCODE_KP_8]) { // Déplacer vers le haut
-                move_player(&player, &maze, -1, 0);
-            }
-            if (keystate[SDL_SCANCODE_KP_2]) { // Déplacer vers le bas
-                move_player(&player, &maze, 1, 0);
-            }
-            if (keystate[SDL_SCANCODE_KP_4]) { // Déplacer vers la gauche
-                move_player(&player, &maze, 0, -1);
-            }
-            if (keystate[SDL_SCANCODE_KP_6]) { // Déplacer vers la droite
-                move_player(&player, &maze, 0, 1);
-            }
-            if (keystate[SDL_SCANCODE_KP_7]) { // Déplacer en diagonale haut-gauche
-                move_player(&player, &maze, -1, -1);
-            }
-            if (keystate[SDL_SCANCODE_KP_9]) { // Déplacer en diagonale haut-droite
-                move_player(&player, &maze, -1, 1);
-            }
-            if (keystate[SDL_SCANCODE_KP_1]) { // Déplacer en diagonale bas-gauche
-                move_player(&player, &maze, 1, -1);
-            }
-            if (keystate[SDL_SCANCODE_KP_3]) { // Déplacer en diagonale bas-droite
-                move_player(&player, &maze, 1, 1);
-            }
-
-            // Mettre à jour l'heure du dernier mouvement
-            lastMoveTime = currentTime;
-        }
-
-        // Effacer l'écran
+        // Clear the screen
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
 
-        // Dessiner le labyrinthe et le joueur
-        draw_maze(renderer, font, &maze);
+        // Draw the maze (graph) and player
+        draw_graph(renderer, font, graph);
 
-        // Dessiner le joueur
-        SDL_Rect playerRect = {player.y * CELL_SIZE, player.x * CELL_SIZE, CELL_SIZE, CELL_SIZE};
-        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // Vert pour le joueur
-        SDL_RenderFillRect(renderer, &playerRect);
-
-        
-
-        // Afficher l'écran mis à jour
+        // Display the screen
         SDL_RenderPresent(renderer);
     }
 
-    // Nettoyer
+    // Cleanup
     TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
