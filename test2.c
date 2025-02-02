@@ -102,11 +102,80 @@ void initialize_graph(Graph *graph) {
 
 // Set start and end points
 void set_start_end(Graph *graph) {
-    graph->start = graph->nodes[rand() % graph->node_count];
-    graph->end = graph->nodes[rand() % graph->node_count];
+    do {
+        graph->start = graph->nodes[rand() % graph->node_count];
+    } while (graph->start->letter != ' ');  // Ensure it's an empty space
+
+    do {
+        graph->end = graph->nodes[rand() % graph->node_count];
+    } while (graph->end->letter != ' ' || graph->end == graph->start);  // Ensure it's an empty space and different from start
 }
 
 
+
+
+// Charge un dictionnaire de mots depuis un fichier
+int load_words(const char *filename, char words[][20], int max_words) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        printf("Erreur : impossible d'ouvrir le fichier %s\n", filename);
+        return 0;
+    }
+
+    int count = 0;
+    while (fscanf(file, "%19s", words[count]) == 1 && count < max_words) {
+        count++;
+    }
+
+    fclose(file);
+    return count;
+}
+
+int can_place_word(Graph *graph, const char *word, int x, int y, int horizontal) {
+    int len = strlen(word);
+    if (horizontal) {
+        if (y + len > GRID_SIZE) return 0;
+        for (int i = 0; i < len; i++) {
+            Node *node = graph->nodes[x * GRID_SIZE + y + i];
+            if (node->letter != ' ' && node->letter != word[i]) return 0;
+        }
+    } else {
+        if (x + len > GRID_SIZE) return 0;
+        for (int i = 0; i < len; i++) {
+            Node *node = graph->nodes[(x + i) * GRID_SIZE + y];
+            if (node->letter != ' ' && node->letter != word[i]) return 0;
+        }
+    }
+    return 1;
+}
+
+int try_place_word(Graph *graph, const char *word) {
+    int len = strlen(word);
+    int attempts = 100;
+
+    while (attempts-- > 0) {
+        int horizontal = rand() % 2;
+        int x = rand() % GRID_SIZE;
+        int y = rand() % GRID_SIZE;
+
+        if (can_place_word(graph, word, x, y, horizontal)) {
+            for (int i = 0; i < len; i++) {
+                Node *node = graph->nodes[(horizontal ? x : x + i) * GRID_SIZE + (horizontal ? y + i : y)];
+                node->letter = word[i];
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void place_words(Graph *graph, const char *words[], int word_count) {
+    for (int i = 0; i < word_count; i++) {
+        if (!try_place_word(graph, words[i])) {
+            printf("⚠️ Impossible de placer le mot: %s\n", words[i]);
+        }
+    }
+}
 
 // Initialize the player
 void initialize_player(Player *player, Graph *graph) {
@@ -125,10 +194,10 @@ void move_player(Player *player, Graph *graph, int dx, int dy) {
         if (node->x == new_x && node->y == new_y && node->letter != '#') {
             player->x = new_x;
             player->y = new_y;
-            if (node->letter != ' ') {
-                player->score += 10;
-                node->letter = ' ';
-            }
+            // if (node->letter != ' ') {
+            //     player->score += 10;
+            //     // node->letter = ' ';
+            // }
             break;
         }
     }
@@ -167,42 +236,51 @@ void remove_edge(Node *node1, Node *node2)
 }
 
 // Function to add a wall by removing edges and marking the grid
-void add_wall(Graph *graph, int x1, int y1, int x2, int y2)
-{
+void add_wall(Graph *graph, int x1, int y1, int x2, int y2) {
     int passage_x = x1 + rand() % (x2 - x1 + 1);
     int passage_y = y1 + rand() % (y2 - y1 + 1);
 
-    if (x1 == x2) // Vertical wall
-    {
-        for (int y = y1; y <= y2; y++)
-        {
-            if (y != passage_y) // Leave a passage
-            {
+    if (x1 == x2) { // Vertical wall
+        for (int y = y1; y <= y2; y++) {
+            if (y != passage_y) { // Leave a passage
                 Node *node = graph->nodes[x1 * GRID_SIZE + y];
-                node->letter = '#'; // Mark as wall
+                if (node->letter == ' ') {  // Only mark as a wall if it's empty
+                    node->letter = '#'; 
 
-                // Remove edges to disconnect from neighbors
-                if (x1 > 0)
-                    remove_edge(node, graph->nodes[(x1 - 1) * GRID_SIZE + y]); // Remove left connection
-                if (x1 < GRID_SIZE - 1)
-                    remove_edge(node, graph->nodes[(x1 + 1) * GRID_SIZE + y]); // Remove right connection
+                    // Remove edges to disconnect from neighbors
+                    if (x1 > 0) remove_edge(node, graph->nodes[(x1 - 1) * GRID_SIZE + y]);
+                    if (x1 < GRID_SIZE - 1) remove_edge(node, graph->nodes[(x1 + 1) * GRID_SIZE + y]);
+                }
+            }
+        }
+    } else if (y1 == y2) { // Horizontal wall
+        for (int x = x1; x <= x2; x++) {
+            if (x != passage_x) { // Leave a passage
+                Node *node = graph->nodes[x * GRID_SIZE + y1];
+                if (node->letter == ' ') {  // Only mark as a wall if it's empty
+                    node->letter = '#'; 
+
+                    // Remove edges to disconnect from neighbors
+                    if (y1 > 0) remove_edge(node, graph->nodes[x * GRID_SIZE + (y1 - 1)]);
+                    if (y1 < GRID_SIZE - 1) remove_edge(node, graph->nodes[x * GRID_SIZE + (y1 + 1)]);
+                }
             }
         }
     }
-    else if (y1 == y2) // Horizontal wall
-    {
-        for (int x = x1; x <= x2; x++)
-        {
-            if (x != passage_x) // Leave a passage
-            {
-                Node *node = graph->nodes[x * GRID_SIZE + y1];
-                node->letter = '#'; // Mark as wall
+}
 
-                // Remove edges to disconnect from neighbors
-                if (y1 > 0)
-                    remove_edge(node, graph->nodes[x * GRID_SIZE + (y1 - 1)]); // Remove top connection
-                if (y1 < GRID_SIZE - 1)
-                    remove_edge(node, graph->nodes[x * GRID_SIZE + (y1 + 1)]); // Remove bottom connection
+
+//add random LETTERS to the graph
+void add_random_letters(Graph *graph)
+{
+    for (int i = 0; i < GRID_SIZE; i++)
+    {
+        for (int j = 0; j < GRID_SIZE; j++)
+        {
+            Node *node = graph->nodes[i * GRID_SIZE + j];
+            if (node->letter == ' ')
+            {
+                node->letter = 'a' + rand() % 26;
             }
         }
     }
@@ -212,7 +290,7 @@ void add_wall(Graph *graph, int x1, int y1, int x2, int y2)
 // Recursive function to divide the graph into sections using walls
 void divide_graph(Graph *graph, int startX, int startY, int endX, int endY)
 {
-    if (endX - startX < 3 || endY - startY < 3)
+    if (endX - startX < 2 || endY - startY < 2)
     {
         return; // Stop when sections are too small
     }
@@ -235,20 +313,48 @@ void divide_graph(Graph *graph, int startX, int startY, int endX, int endY)
 
 
 // Render the maze
-void draw_graph(SDL_Renderer *renderer, Graph *graph, Player *player) {
+void draw_graph(SDL_Renderer *renderer, Graph *graph, Player *player, TTF_Font *font) {
     for (int i = 0; i < GRID_SIZE; i++) {
         for (int j = 0; j < GRID_SIZE; j++) {
             Node *node = graph->nodes[i * GRID_SIZE + j];
             SDL_Rect cell = {j * CELL_SIZE, i * CELL_SIZE, CELL_SIZE, CELL_SIZE};
 
-            if (node->letter == '#')
-                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            else
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            if (node->letter == '#'){
+                 // Dessiner un mur taille de la cellule de mur 
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Mur noir
+                SDL_RenderFillRect(renderer, &cell);
+            }else{
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // Fond blanc
+                SDL_RenderFillRect(renderer, &cell);
 
-            SDL_RenderFillRect(renderer, &cell);
+                // Dessiner la lettre
+                if (node->letter != ' ') {
+                    char letter[2] = {node->letter, '\0'};
+                    SDL_Color textColor = {0, 0, 0}; // Noir
+                    SDL_Surface *textSurface = TTF_RenderText_Solid(font, letter, textColor);
+                    SDL_Texture *textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+                    int textW, textH;
+                    SDL_QueryTexture(textTexture, NULL, NULL, &textW, &textH);
+                    SDL_Rect textRect = {cell.x + (CELL_SIZE - textW) / 2, cell.y + (CELL_SIZE - textH) / 2, textW, textH};
+                    SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+                    SDL_DestroyTexture(textTexture);
+                    SDL_FreeSurface(textSurface);
+                }
+            }
+             
         }
     }
+    // Dessiner le point de départ
+    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // Vert pour le point de départ
+    SDL_Rect startRect = {graph->start->y * CELL_SIZE, graph->start->x * CELL_SIZE, CELL_SIZE, CELL_SIZE};
+    SDL_RenderFillRect(renderer, &startRect);
+
+    // Dessiner le point d'arrivée
+    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255); // Rouge pour le point d'arrivée
+    SDL_Rect endRect = {graph->end->y * CELL_SIZE, graph->end->x * CELL_SIZE, CELL_SIZE, CELL_SIZE};
+    SDL_RenderFillRect(renderer, &endRect);
+
+    // Dessiner le joueur
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
     SDL_Rect playerRect = {player->y * CELL_SIZE, player->x * CELL_SIZE, CELL_SIZE, CELL_SIZE};
@@ -259,28 +365,116 @@ int main( int argc, char* args[] ) {
     srand(time(NULL));
     Graph *graph = create_graph();
     initialize_graph(graph);
+    
+    // Load words from file
+    char words[1000][20];
+    int word_count = load_words("dictionnaire.txt", words, 5);
+    const char *word_ptrs[5];
+    for (int i = 0; i < word_count; i++) {
+        word_ptrs[i] = words[i];
+    }
+    place_words(graph, word_ptrs, word_count);
     set_start_end(graph);
+
+
+    printf("le GRAPHE APR2S LE PLACEMENT DES MOTS\n");
+    // je veux un affichage seleon matrice
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            Node *node = graph->nodes[i * GRID_SIZE + j];
+            printf("%c |", node->letter);
+        }
+        printf("\n");
+    }
+
     divide_graph(graph, 0, 0, GRID_SIZE - 1, GRID_SIZE - 1);
+
+    add_random_letters(graph);
+
+    printf("le GRAPHE APR2S LA DIVISION\n");
+    // je veux un affichage seleon matrice
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            Node *node = graph->nodes[i * GRID_SIZE + j];
+            printf("%c |", node->letter);
+        }
+        printf("\n");
+    }
+
+
 
 
     SDL_Init(SDL_INIT_VIDEO);
+    TTF_Init();
     SDL_Window *window = SDL_CreateWindow("Maze", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_SIZE, WINDOW_SIZE, SDL_WINDOW_SHOWN);
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    TTF_Font *font = TTF_OpenFont("arial.ttf", 24);
+
+    if (!font){
+        printf("Erreur : impossible de charger la police\n");
+        return 1;
+    }
 
     Player player;
     initialize_player(&player, graph);
 
+    Uint32 lastMoveTime = 0;
+    Uint32 moveDelay = 150;
     int running = 1;
     SDL_Event event;
-    while (running) {
-        while (SDL_PollEvent(&event))
-            if (event.type == SDL_QUIT)
-                running = 0;
 
+    while (running) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                running = 0;
+            }
+        }
+
+        Uint32 currentTime = SDL_GetTicks();
+        if (currentTime - lastMoveTime > moveDelay) {
+            const Uint8 *keystate = SDL_GetKeyboardState(NULL);
+
+            
+            if (keystate[SDL_SCANCODE_KP_8]) { // Déplacer vers le haut
+                move_player(&player, graph, -1, 0);
+            }
+            if (keystate[SDL_SCANCODE_KP_2]) { // Déplacer vers le bas
+                move_player(&player, graph, 1, 0);
+            }
+            if (keystate[SDL_SCANCODE_KP_4]) { // Déplacer vers la gauche
+                move_player(&player, graph, 0, -1);
+            }
+            if (keystate[SDL_SCANCODE_KP_6]) { // Déplacer vers la droite
+                move_player(&player, graph, 0, 1);
+            }
+            if (keystate[SDL_SCANCODE_KP_7]) { // Déplacer en diagonale haut-gauche
+                move_player(&player, graph, -1, -1);
+            }
+            if (keystate[SDL_SCANCODE_KP_9]) { // Déplacer en diagonale haut-droite
+                move_player(&player, graph, -1, 1);
+            }
+            if (keystate[SDL_SCANCODE_KP_1]) { // Déplacer en diagonale bas-gauche
+                move_player(&player, graph, 1, -1);
+            }
+            if (keystate[SDL_SCANCODE_KP_3]) { // Déplacer en diagonale bas-droite
+                move_player(&player, graph, 1, 1);
+            }
+          
+
+            lastMoveTime = currentTime;
+        }
+
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
-        draw_graph(renderer, graph, &player);
+
+        draw_graph(renderer, graph, &player, font);
+
         SDL_RenderPresent(renderer);
     }
+
+
+    
+    
 
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
