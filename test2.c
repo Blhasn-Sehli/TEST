@@ -462,33 +462,13 @@ int main(int argc, char *args[])
     place_words(graph, word_ptrs, word_count);
     set_start_end(graph);
 
-    printf("le GRAPHE APR2S LE PLACEMENT DES MOTS\n");
-    // je veux un affichage seleon matrice
-    for (int i = 0; i < GRID_SIZE; i++)
-    {
-        for (int j = 0; j < GRID_SIZE; j++)
-        {
-            Node *node = graph->nodes[i * GRID_SIZE + j];
-            printf("%c |", node->letter);
-        }
-        printf("\n");
-    }
+    
 
     divide_graph(graph, 0, 0, GRID_SIZE - 1, GRID_SIZE - 1);
 
     add_random_letters(graph);
 
-    printf("le GRAPHE APR2S LA DIVISION\n");
-    // je veux un affichage seleon matrice
-    for (int i = 0; i < GRID_SIZE; i++)
-    {
-        for (int j = 0; j < GRID_SIZE; j++)
-        {
-            Node *node = graph->nodes[i * GRID_SIZE + j];
-            printf("%c |", node->letter);
-        }
-        printf("\n");
-    }
+    
 
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();

@@ -61,6 +61,7 @@
     "time.h": "c",
     "string.h": "c",
     "stdlib.h": "c",
-    "sdl_ttf.h": "c"
+    "sdl_ttf.h": "c",
+    "stdbool.h": "c"
   }
 }
