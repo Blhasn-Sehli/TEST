@@ -1,0 +1,12 @@
+parfait imparfait 
+strture de graphe implente 
+ 
+
+A mettre dans le rapport :
+
+le plus court chemin  (debut fin)
+path=
+le meilleure plus court  chemin (debut words fin)
+
+Points défi ? (*,+5,)
+ 
