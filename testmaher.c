@@ -627,6 +627,7 @@ char *find_shortest_path(Graph *graph, Node *start, Node *end)
     return enlever_premier_dernier(word);
 }
 
+// Draw the graph
 void draw_graph(SDL_Renderer *renderer, Graph *graph, Player *player, TTF_Font *font)
 {
     // Draw all the cells in the grid
@@ -706,185 +707,13 @@ void draw_graph(SDL_Renderer *renderer, Graph *graph, Player *player, TTF_Font *
     SDL_RenderDrawRect(renderer, &endRect);
 }
 
-int show_difficulty_selection(SDL_Renderer *renderer, TTF_Font *font)
-{
-    SDL_Event event;
-    int running = 1;
-    int selected = 0; // 0: Easy, 1: Medium, 2: Hard
-    SDL_Color white = {255, 255, 255, 255};
-    SDL_Color blue = {0, 0, 255, 255}; // Blue for selected text
-
-    while (running)
-    {
-        while (SDL_PollEvent(&event))
-        {
-            if (event.type == SDL_QUIT)
-            {
-                return 1;
-            }
-            else if (event.type == SDL_KEYDOWN)
-            {
-                if (event.key.keysym.sym == SDLK_UP)
-                {
-                    selected = (selected - 1 + 3) % 3; // Loop back to Hard if on Easy
-                }
-                else if (event.key.keysym.sym == SDLK_DOWN)
-                {
-                    selected = (selected + 1) % 3; // Loop back to Easy if on Hard
-                }
-                else if (event.key.keysym.sym == SDLK_RETURN)
-                {
-                    return selected; // Return the selected difficulty
-                }
-            }
-        }
-
-        // Set background to white
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Black background
-        SDL_RenderClear(renderer);
-
-        // Render difficulty options
-        SDL_Surface *easySurface = TTF_RenderText_Solid(font, "Easy", selected == 0 ? blue : white);
-        SDL_Surface *mediumSurface = TTF_RenderText_Solid(font, "Medium", selected == 1 ? blue : white);
-        SDL_Surface *hardSurface = TTF_RenderText_Solid(font, "Hard", selected == 2 ? blue : white);
-
-        SDL_Texture *easyTexture = SDL_CreateTextureFromSurface(renderer, easySurface);
-        SDL_Texture *mediumTexture = SDL_CreateTextureFromSurface(renderer, mediumSurface);
-        SDL_Texture *hardTexture = SDL_CreateTextureFromSurface(renderer, hardSurface);
-
-        // Render difficulty options, centered horizontally
-        SDL_Rect easyRect = {50, WINDOW_SIZE / 2 - 30, 60, 40};   // Easy option
-        SDL_Rect mediumRect = {50, WINDOW_SIZE / 2 + 20, 80, 40}; // Medium option
-        SDL_Rect hardRect = {50, WINDOW_SIZE / 2 + 70, 60, 40};   // Hard option
-
-        SDL_RenderCopy(renderer, easyTexture, NULL, &easyRect);
-        SDL_RenderCopy(renderer, mediumTexture, NULL, &mediumRect);
-        SDL_RenderCopy(renderer, hardTexture, NULL, &hardRect);
-
-        SDL_FreeSurface(easySurface);
-        SDL_FreeSurface(mediumSurface);
-        SDL_FreeSurface(hardSurface);
-        SDL_DestroyTexture(easyTexture);
-        SDL_DestroyTexture(mediumTexture);
-        SDL_DestroyTexture(hardTexture);
-
-        SDL_RenderPresent(renderer);
-    }
-    return 1;
-}
-
-int show_menu(SDL_Renderer *renderer, TTF_Font *font)
-{
-    SDL_Event event;
-    int running = 1;
-    int selected = 0; // 0: New Game, 1: Quit
-
-    while (running)
-    {
-        while (SDL_PollEvent(&event))
-        {
-            if (event.type == SDL_QUIT)
-            {
-                return 1;
-            }
-            if (event.type == SDL_KEYDOWN)
-            {
-                if (event.key.keysym.sym == SDLK_UP || event.key.keysym.sym == SDLK_DOWN)
-                {
-                    selected = !selected;
-                }
-                else if (event.key.keysym.sym == SDLK_RETURN)
-                {
-                    if (selected == 0)
-                    {
-                        // New game selected, show difficulty selection
-                        int difficulty = show_difficulty_selection(renderer, font);
-                        return difficulty;
-                    }
-                    else
-                    {
-                        return -1; // Quit game
-                    }
-                }
-            }
-        }
-
-        // Set background to white
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // White background
-        SDL_RenderClear(renderer);
-
-        SDL_Color white = {255, 255, 255, 255}; // Black text color for the menu
-        SDL_Color blue = {0, 0, 255, 255};      // Blue for selected text
-
-        // Render header
-        SDL_Surface *headerSurface = TTF_RenderText_Solid(font, "Welcome to The Maze Game", white);
-        SDL_Texture *headerTexture = SDL_CreateTextureFromSurface(renderer, headerSurface);
-        SDL_Rect headerRect = {50, 50, 300, 40};
-        SDL_RenderCopy(renderer, headerTexture, NULL, &headerRect);
-        SDL_FreeSurface(headerSurface);
-        SDL_DestroyTexture(headerTexture);
-
-        TTF_SetFontStyle(font, TTF_STYLE_BOLD);
-        // Render "New Game" and "Quit Game" with different colors based on selection
-        SDL_Surface *newGameSurface = TTF_RenderText_Solid(font, "New Game", selected == 0 ? blue : white);
-        SDL_Surface *quitSurface = TTF_RenderText_Solid(font, "Quit Game", selected == 1 ? blue : white);
-
-        SDL_Texture *newGameTexture = SDL_CreateTextureFromSurface(renderer, newGameSurface);
-        SDL_Texture *quitTexture = SDL_CreateTextureFromSurface(renderer, quitSurface);
-
-        SDL_Rect newGameRect = {50, WINDOW_SIZE / 2 - 20, 100, 40};
-        SDL_Rect quitRect = {50, WINDOW_SIZE / 2 + 20, 100, 40};
-
-        SDL_RenderCopy(renderer, newGameTexture, NULL, &newGameRect);
-        SDL_RenderCopy(renderer, quitTexture, NULL, &quitRect);
-
-        SDL_FreeSurface(newGameSurface);
-        SDL_FreeSurface(quitSurface);
-        SDL_DestroyTexture(newGameTexture);
-        SDL_DestroyTexture(quitTexture);
-
-        // Render footer
-        SDL_Surface *footerSurface = TTF_RenderText_Solid(font, "Made by Caption", white);
-        SDL_Texture *footerTexture = SDL_CreateTextureFromSurface(renderer, footerSurface);
-        SDL_Rect footerRect = {300, WINDOW_SIZE - 50, 200, 30};
-        SDL_RenderCopy(renderer, footerTexture, NULL, &footerRect);
-        SDL_FreeSurface(footerSurface);
-        SDL_DestroyTexture(footerTexture);
-
-        SDL_RenderPresent(renderer);
-    }
-    return 1;
-}
-
 int main(int argc, char *args[])
 {
     srand(time(NULL));
-    SDL_Init(SDL_INIT_VIDEO);
-    TTF_Init();
-
-    SDL_Window *window = SDL_CreateWindow("Maze", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_SIZE, WINDOW_SIZE, SDL_WINDOW_SHOWN);
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    TTF_Font *font = TTF_OpenFont("Poppins-Italic.ttf", 24);
-
-    if (!font)
-    {
-        printf("Erreur : impossible de charger la police\n");
-        return 1;
-    }
-
-    int difficulty = show_menu(renderer, font);
-    printf("Selected difficulty: %d\n", difficulty);
-
-    if (difficulty == -1)
-    {
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 0;
-    }
-
     Graph *graph = create_graph();
     initialize_graph(graph);
+    printf("JUST AFTER INITIALIZING GRAPH\n");
+    print_neighbors(graph);
 
     // Load words from file
     char words[1000][20];
@@ -894,14 +723,45 @@ int main(int argc, char *args[])
     {
         word_ptrs[i] = words[i];
     }
+
     place_words(graph, word_ptrs, &word_count, 5);
+
     set_start_end(graph);
+    printf("JUST AFTER SETTING START AND END\n");
+    print_neighbors(graph);
 
     divide_graph(graph, 0, 0, GRID_SIZE - 1, GRID_SIZE - 1);
-    add_random_letters(graph);
 
+    add_random_letters(graph);
+    printf("JUST AFTER ADDING RANDOM LETTERS\n");
+    print_neighbors(graph);
+
+    // shortest path
+    // afficher start et end neighbors
+    // printf("Start neighbors\n");
+    // for (int i = 0; i < graph->start->neighbor_count; i++)
+    // {
+    //     printf("Start neighbors %d %d\n", graph->start->neighbors[i]->x, graph->start->neighbors[i]->y);
+    // }
+    // printf("End neighbors\n");
+    // for (int i = 0; i < graph->end->neighbor_count; i++)
+    // {
+    //     printf("End neighbors %d %d\n", graph->end->neighbors[i]->x, graph->end->neighbors[i]->y);
+    // }
     char *path = find_shortest_path(graph, graph->start, graph->end);
     printf("Shortest path: %s\n", path);
+
+    SDL_Init(SDL_INIT_VIDEO);
+    TTF_Init();
+    SDL_Window *window = SDL_CreateWindow("Maze", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_SIZE, WINDOW_SIZE, SDL_WINDOW_SHOWN);
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    TTF_Font *font = TTF_OpenFont("arial.ttf", 24);
+
+    if (!font)
+    {
+        printf("Erreur : impossible de charger la police\n");
+        return 1;
+    }
 
     Player player;
     initialize_player(&player, graph);
@@ -927,21 +787,37 @@ int main(int argc, char *args[])
             const Uint8 *keystate = SDL_GetKeyboardState(NULL);
 
             if (keystate[SDL_SCANCODE_KP_8])
+            { // Déplacer vers le haut
                 move_player(&player, graph, -1, 0);
+            }
             if (keystate[SDL_SCANCODE_KP_2])
+            { // Déplacer vers le bas
                 move_player(&player, graph, 1, 0);
+            }
             if (keystate[SDL_SCANCODE_KP_4])
+            { // Déplacer vers la gauche
                 move_player(&player, graph, 0, -1);
+            }
             if (keystate[SDL_SCANCODE_KP_6])
+            { // Déplacer vers la droite
                 move_player(&player, graph, 0, 1);
+            }
             if (keystate[SDL_SCANCODE_KP_7])
+            { // Déplacer en diagonale haut-gauche
                 move_player(&player, graph, -1, -1);
+            }
             if (keystate[SDL_SCANCODE_KP_9])
+            { // Déplacer en diagonale haut-droite
                 move_player(&player, graph, -1, 1);
+            }
             if (keystate[SDL_SCANCODE_KP_1])
+            { // Déplacer en diagonale bas-gauche
                 move_player(&player, graph, 1, -1);
+            }
             if (keystate[SDL_SCANCODE_KP_3])
+            { // Déplacer en diagonale bas-droite
                 move_player(&player, graph, 1, 1);
+            }
 
             lastMoveTime = currentTime;
         }
@@ -949,6 +825,7 @@ int main(int argc, char *args[])
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
         draw_graph(renderer, graph, &player, font);
+
         SDL_RenderPresent(renderer);
     }
 
