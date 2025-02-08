@@ -9,10 +9,8 @@
 
 #define INF INT_MAX
 
-#define GRID_SIZE 15
-#define CELL_SIZE 40
-#define WINDOW_SIZE (GRID_SIZE * CELL_SIZE)
-#define MAX_POINTS (GRID_SIZE * GRID_SIZE) // 1 pour début, 1 pour fin, 100 pour les mots (par exemple) exactement dans le calcul de la distance !!!!
+#define CELL_SIZE 35
+#define MAX_POINTS 1500 // 1 pour début, 1 pour fin, 100 pour les mots (par exemple) exactement dans le calcul de la distance !!!!
 
 typedef struct Node
 {
@@ -21,7 +19,19 @@ typedef struct Node
     int neighbor_count;
     char letter;
     bool visited;
+    bool is_part_of_word;
 } Node;
+
+typedef struct
+{
+    const char *word; // Le mot en question
+    int startX;       // Coordonnée X de départ
+    int startY;       // Coordonnée Y de départ
+    int endX;
+    int endY;
+    int direction; // 0 pour horizontal, 1 pour vertical
+    int length;    // Longueur du mot
+} WordPosition;
 
 typedef struct
 {
@@ -35,6 +45,7 @@ typedef struct
 {
     int x, y;
     int score;
+    char path[200]; // Path to store collected letters
 } Player;
 
 typedef struct PriorityQueue
@@ -59,6 +70,7 @@ Node *create_node(int x, int y)
     node->neighbors = (Node **)malloc(8 * sizeof(Node *));
     node->letter = ' '; // Initialize as empty space
     node->visited = false;
+    node->is_part_of_word = false;
 
     if (!node->neighbors)
     {
@@ -70,7 +82,7 @@ Node *create_node(int x, int y)
 }
 
 // Create graph
-Graph *create_graph()
+Graph *create_graph(int GRID_SIZE)
 {
     Graph *graph = (Graph *)malloc(sizeof(Graph));
     graph->nodes = (Node **)malloc(GRID_SIZE * GRID_SIZE * sizeof(Node *));
@@ -92,7 +104,7 @@ void add_edge(Node *node1, Node *node2)
     // Avoid self-loops
     if (node1 == node2)
     {
-        printf("Skipping self-loop at (%d, %d)\n", node1->x, node1->y);
+        // printf("Skipping self-loop at (%d, %d)\n", node1->x, node1->y);
         return;
     }
 
@@ -120,8 +132,8 @@ void add_edge(Node *node1, Node *node2)
     // If already connected, skip adding the edge
     if (already_connected)
     {
-        printf("Edge between (%d, %d) and (%d, %d) already exists. Skipping.\n",
-               node1->x, node1->y, node2->x, node2->y);
+        // printf("Edge between (%d, %d) and (%d, %d) already exists. Skipping.\n",
+        //        node1->x, node1->y, node2->x, node2->y);
         return;
     }
 
@@ -133,10 +145,10 @@ void add_edge(Node *node1, Node *node2)
     node2->neighbors = (Node **)realloc(node2->neighbors, (node2->neighbor_count + 1) * sizeof(Node *));
     node2->neighbors[node2->neighbor_count++] = node1;
 
-    printf("Added edge between (%d, %d) and (%d, %d)\n", node1->x, node1->y, node2->x, node2->y);
+    // printf("Added edge between (%d, %d) and (%d, %d)\n", node1->x, node1->y, node2->x, node2->y);
 }
 
-void print_neighbors(Graph *graph)
+void print_neighbors(Graph *graph, int GRID_SIZE)
 {
     for (int x = 0; x < GRID_SIZE; x++)
     {
@@ -154,7 +166,7 @@ void print_neighbors(Graph *graph)
 }
 
 // Initialize the graph
-void initialize_graph(Graph *graph)
+void initialize_graph(Graph *graph, int GRID_SIZE)
 {
 
     for (int x = 0; x < GRID_SIZE; x++)
@@ -197,15 +209,37 @@ void initialize_graph(Graph *graph)
 // Set start and end points
 void set_start_end(Graph *graph)
 {
-    do
-    {
-        graph->start = graph->nodes[rand() % graph->node_count];
-    } while (graph->start->letter == '#' || graph->start->letter == ' '); // Ensure it's not a wall or empty space
+    Node *valid_nodes[graph->node_count]; // Array to store valid nodes
+    int valid_count = 0;
 
+    // Collect all valid nodes (not walls, empty spaces, or part of a word)
+    for (int i = 0; i < graph->node_count; i++)
+    {
+        // printf("Node letter: %c\n and is_part_of_word: %d\n", graph->nodes[i]->letter, graph->nodes[i]->is_part_of_word);
+        if (graph->nodes[i]->letter != '#' && graph->nodes[i]->letter != ' ' && !graph->nodes[i]->is_part_of_word)
+        {
+            valid_nodes[valid_count++] = graph->nodes[i];
+        }
+    }
+
+    // Ensure there are at least 2 valid nodes (start and end)
+    if (valid_count < 2)
+    {
+        // printf("Error: Not enough valid nodes for start and end!\n");
+        return;
+    }
+
+    // Select start position randomly from valid nodes
+    graph->start = valid_nodes[rand() % valid_count];
+
+    // Select end position ensuring minimum distance of 5
     do
     {
-        graph->end = graph->nodes[rand() % graph->node_count];
-    } while (graph->end->letter == '#' || graph->end->letter == ' ' || graph->end == graph->start || abs(graph->end->x - graph->start->x) + abs(graph->end->y - graph->start->y) < 5); // Ensure it's not a wall, not an empty space, and different from start
+        graph->end = valid_nodes[rand() % valid_count];
+    } while (graph->end == graph->start ||
+             abs(graph->end->x - graph->start->x) + abs(graph->end->y - graph->start->y) < 5);
+
+    printf("Start: (%d, %d), End: (%d, %d)\n", graph->start->x, graph->start->y, graph->end->x, graph->end->y);
 }
 
 // Charge un dictionnaire de mots depuis un fichier
@@ -228,7 +262,7 @@ int load_words(const char *filename, char words[][20], int max_words)
     return count;
 }
 
-int can_place_word(Graph *graph, const char *word, int x, int y, int horizontal)
+int can_place_word(Graph *graph, const char *word, int x, int y, int horizontal, int GRID_SIZE)
 {
     int len = strlen(word);
     if (horizontal)
@@ -256,7 +290,7 @@ int can_place_word(Graph *graph, const char *word, int x, int y, int horizontal)
     return 1;
 }
 
-int try_place_word(Graph *graph, const char *word, int *word_count)
+int try_place_word(Graph *graph, const char *word, WordPosition *word_positions, int *word_count, int GRID_SIZE)
 {
     int len = strlen(word);
     int attempts = 100;
@@ -267,16 +301,39 @@ int try_place_word(Graph *graph, const char *word, int *word_count)
         int x = rand() % GRID_SIZE;
         int y = rand() % GRID_SIZE;
 
-        if (can_place_word(graph, word, x, y, horizontal))
+        if (can_place_word(graph, word, x, y, horizontal, GRID_SIZE))
         {
             // Place the word on the grid
             for (int i = 0; i < len; i++)
             {
-                // Node *node = graph->nodes[(horizontal ? x : x + i) * GRID_SIZE + (horizontal ? y + i : y)];
-                Node *node = graph->nodes[(x + (horizontal ? 0 : i)) * GRID_SIZE + (y + (horizontal ? i : 0))];
-
+                Node *node = graph->nodes[(horizontal ? x : x + i) * GRID_SIZE + (horizontal ? y + i : y)];
                 node->letter = word[i];
+                node->is_part_of_word = true;
             }
+
+            // Save the position and information of the word
+            word_positions[*word_count].word = word;
+            word_positions[*word_count].direction = horizontal;
+            word_positions[*word_count].length = len;
+
+            // Store the start position (x, y) of the word
+            word_positions[*word_count].startX = x;
+            word_positions[*word_count].startY = y;
+
+            // Calculate the end position based on direction and word length
+            if (horizontal)
+            {
+                word_positions[*word_count].endX = x;
+                word_positions[*word_count].endY = y + len - 1;
+            }
+            else
+            {
+                word_positions[*word_count].endX = x + len - 1;
+                word_positions[*word_count].endY = y;
+            }
+
+            // Increment the word count
+            (*word_count)++;
 
             return 1;
         }
@@ -284,11 +341,11 @@ int try_place_word(Graph *graph, const char *word, int *word_count)
     return 0;
 }
 
-void place_words(Graph *graph, const char *words[], int *word_count, int word_count_total)
+void place_words(Graph *graph, const char *words[], WordPosition *word_positions, int *word_count, int word_count_total, int GRID_SIZE)
 {
     for (int i = 0; i < word_count_total; i++)
     {
-        if (!try_place_word(graph, words[i], word_count))
+        if (!try_place_word(graph, words[i], word_positions, word_count, GRID_SIZE))
         {
             printf("⚠️ Impossible de placer le mot: %s\n", words[i]);
         }
@@ -305,7 +362,7 @@ void initialize_player(Player *player, Graph *graph)
 
 // Move the player
 // Update the move_player function
-void move_player(Player *player, Graph *graph, int dx, int dy)
+void move_player(Player *player, Graph *graph, int dx, int dy, int GRID_SIZE)
 {
     int new_x = player->x + dx;
     int new_y = player->y + dy;
@@ -323,7 +380,9 @@ void move_player(Player *player, Graph *graph, int dx, int dy)
             if (node->letter != ' ')
             {
                 // player->score += 10;  // Increase score when collecting a letter
-                // node->letter = ' ';   // Remove the letter after collection
+                // node->letter = ' ';
+                // add the letter to the player path
+                player->path[strlen(player->path)] = node->letter;
             }
             break;
         }
@@ -362,7 +421,7 @@ void remove_edge(Node *node1, Node *node2)
 }
 
 // Function to add a wall by removing edges and marking the grid
-void add_wall(Graph *graph, int x1, int y1, int x2, int y2)
+void add_wall(Graph *graph, int x1, int y1, int x2, int y2, int GRID_SIZE)
 {
     int passage_x = x1 + rand() % (x2 - x1 + 1);
     int passage_y = y1 + rand() % (y2 - y1 + 1);
@@ -433,7 +492,7 @@ void add_wall(Graph *graph, int x1, int y1, int x2, int y2)
     }
 }
 // add random LETTERS to the graph
-void add_random_letters(Graph *graph)
+void add_random_letters(Graph *graph, int GRID_SIZE)
 {
     for (int i = 0; i < GRID_SIZE; i++)
     {
@@ -442,14 +501,14 @@ void add_random_letters(Graph *graph)
             Node *node = graph->nodes[i * GRID_SIZE + j];
             if (node->letter == ' ')
             {
-                node->letter = 'a' + rand() % 26;
+                node->letter = 'A' + rand() % 26;
             }
         }
     }
 }
 
 // Recursive function to divide the graph into sections using walls
-void divide_graph(Graph *graph, int startX, int startY, int endX, int endY)
+void divide_graph(Graph *graph, int startX, int startY, int endX, int endY, int GRID_SIZE)
 {
     if (endX - startX < 2 || endY - startY < 2)
     {
@@ -459,16 +518,17 @@ void divide_graph(Graph *graph, int startX, int startY, int endX, int endY)
     if (rand() % 2 == 0)
     { // Vertical division
         int divideX = startX + rand() % (endX - startX - 1) + 1;
-        add_wall(graph, divideX, startY, divideX, endY);        // Add vertical wall
-        divide_graph(graph, startX, startY, divideX - 1, endY); // Left section
-        divide_graph(graph, divideX + 1, startY, endX, endY);   // Right section
+        add_wall(graph, divideX, startY, divideX, endY, GRID_SIZE);        // Add vertical wall
+        divide_graph(graph, startX, startY, divideX - 1, endY, GRID_SIZE); // Left section
+        divide_graph(graph, divideX + 1, startY, endX, endY, GRID_SIZE);   // Right section
     }
     else
     { // Horizontal division
         int divideY = startY + rand() % (endY - startY - 1) + 1;
-        add_wall(graph, startX, divideY, endX, divideY);        // Add horizontal wall
-        divide_graph(graph, startX, startY, endX, divideY - 1); // Top section
-        divide_graph(graph, startX, divideY + 1, endX, endY);   // Bottom section
+        add_wall(graph, startX, divideY, endX, divideY, GRID_SIZE);        // Add horizontal wall
+        divide_graph(graph, startX, startY, endX, divideY - 1, GRID_SIZE); // Top section
+        divide_graph(graph, startX, divideY + 1, endX, endY, GRID_SIZE);
+        // Bottom section
     }
 }
 
@@ -531,12 +591,12 @@ char *enlever_premier_dernier(const char *source)
 }
 
 // Shortest path function that returns the path as a string
-char *find_shortest_path(Graph *graph, Node *start, Node *end)
+char *find_shortest_path(Graph *graph, Node *start, Node *end, int GRID_SIZE)
 {
     int distances[MAX_POINTS];
     Node *previous[MAX_POINTS];
 
-    printf("Graph node count: %d\n", graph->node_count);
+    // printf("Graph node count: %d\n", graph->node_count);
 
     // Initialize distances and previous nodes
     for (int i = 0; i < graph->node_count; i++)
@@ -545,8 +605,8 @@ char *find_shortest_path(Graph *graph, Node *start, Node *end)
         previous[i] = NULL;
     }
 
-    printf("Start Node: (%d, %d) with letter '%c'\n", start->x, start->y, start->letter);
-    printf("End Node: (%d, %d) with letter '%c'\n", end->x, end->y, end->letter);
+    // printf("Start Node: (%d, %d) with letter '%c'\n", start->x, start->y, start->letter);
+    // printf("End Node: (%d, %d) with letter '%c'\n", end->x, end->y, end->letter);
 
     distances[start->x * GRID_SIZE + start->y] = 0;
 
@@ -560,8 +620,8 @@ char *find_shortest_path(Graph *graph, Node *start, Node *end)
             break;
 
         int currentIndex = current->x * GRID_SIZE + current->y;
-        printf("Processing Node: (%d, %d) with letter '%c'\n", current->x, current->y, current->letter);
-        printf("Neighbors Count: %d\n", current->neighbor_count);
+        // printf("Processing Node: (%d, %d) with letter '%c'\n", current->x, current->y, current->letter);
+        // printf("Neighbors Count: %d\n", current->neighbor_count);
 
         for (int i = 0; i < current->neighbor_count; i++)
         {
@@ -570,22 +630,22 @@ char *find_shortest_path(Graph *graph, Node *start, Node *end)
             // Skip walls
             if (neighbor->letter == '#')
             {
-                printf("Skipping wall at (%d, %d)\n", neighbor->x, neighbor->y);
+                // printf("Skipping wall at (%d, %d)\n", neighbor->x, neighbor->y);
                 continue;
             }
 
             int neighborIndex = neighbor->x * GRID_SIZE + neighbor->y;
             int alt = distances[currentIndex] + 1;
 
-            printf("Evaluating Neighbor: (%d, %d) with letter '%c'\n", neighbor->x, neighbor->y, neighbor->letter);
-            printf("Current Distance: %d, New Distance: %d\n", distances[neighborIndex], alt);
+            // printf("Evaluating Neighbor: (%d, %d) with letter '%c'\n", neighbor->x, neighbor->y, neighbor->letter);
+            // printf("Current Distance: %d, New Distance: %d\n", distances[neighborIndex], alt);
 
             if (alt < distances[neighborIndex])
             {
                 distances[neighborIndex] = alt;
                 previous[neighborIndex] = current;
                 push(&pq, neighbor, alt);
-                printf("Updating path: Previous[%d] = (%d, %d)\n", neighborIndex, current->x, current->y);
+                // printf("Updating path: Previous[%d] = (%d, %d)\n", neighborIndex, current->x, current->y);
             }
         }
     }
@@ -593,7 +653,7 @@ char *find_shortest_path(Graph *graph, Node *start, Node *end)
     // If no path was found
     if (previous[end->x * GRID_SIZE + end->y] == NULL)
     {
-        printf("No path found between (%d, %d) and (%d, %d).\n", start->x, start->y, end->x, end->y);
+        // printf("No path found between (%d, %d) and (%d, %d).\n", start->x, start->y, end->x, end->y);
         return NULL;
     }
 
@@ -604,7 +664,7 @@ char *find_shortest_path(Graph *graph, Node *start, Node *end)
     for (Node *at = end; at != NULL; at = previous[at->x * GRID_SIZE + at->y])
     {
         path[path_length++] = at;
-        printf("Adding to path: (%d, %d) with letter '%c'\n", at->x, at->y, at->letter);
+        // printf("Adding to path: (%d, %d) with letter '%c'\n", at->x, at->y, at->letter);
     }
 
     // Create a string from collected letters
@@ -624,10 +684,162 @@ char *find_shortest_path(Graph *graph, Node *start, Node *end)
     word[path_length] = '\0';
     printf("\n");
     printf("Final Path: %s\n", word);
-    return enlever_premier_dernier(word);
+    return (word);
 }
 
-void draw_graph(SDL_Renderer *renderer, Graph *graph, Player *player, TTF_Font *font)
+int get_distance(Node *a, Node *b)
+{
+    return abs(a->x - b->x) + abs(a->y - b->y);
+}
+// Find the optimal order to visit words (Greedy nearest neighbor)
+// Find the optimal order to visit words (Greedy nearest neighbor)
+void find_best_word_order(Graph *graph, WordPosition *word_positions, int word_count, Node **visit_order, int GRID_SIZE)
+{
+    int visited[word_count];
+    memset(visited, 0, sizeof(visited));
+
+    Node *current = graph->start;
+    int order_index = 0;
+
+    for (int i = 0; i < word_count; i++)
+    {
+        int best_index = -1;
+        int min_distance = INT_MAX;
+
+        for (int j = 0; j < word_count; j++)
+        {
+            if (!visited[j])
+            {
+                Node *word_start = graph->nodes[word_positions[j].startX * GRID_SIZE + word_positions[j].startY];
+                int distance = get_distance(current, word_start);
+
+                if (distance < min_distance)
+                {
+                    min_distance = distance;
+                    best_index = j;
+                }
+            }
+        }
+
+        if (best_index != -1)
+        {
+            visited[best_index] = 1;
+
+            // Visit word start position
+            visit_order[order_index++] = graph->nodes[word_positions[best_index].startX * GRID_SIZE + word_positions[best_index].startY];
+
+            // Visit word end position
+            visit_order[order_index++] = graph->nodes[word_positions[best_index].endX * GRID_SIZE + word_positions[best_index].endY];
+
+            // Update current position
+            current = visit_order[order_index - 1];
+        }
+    }
+
+    // Add the end node at the end of the visit order
+    visit_order[order_index] = graph->end;
+}
+
+// Function to compute and print the full path (start → word start → word end → next word → end)
+char *concatenate_paths(char **segments, int count)
+{
+    int total_length = 0;
+
+    // Calculate total length needed
+    for (int i = 0; i < count; i++)
+    {
+        if (segments[i])
+        {
+            total_length += strlen(segments[i]);
+        }
+    }
+
+    // Allocate memory for final path
+    char *final_path = malloc(total_length + 1);
+    if (!final_path)
+        return NULL;
+
+    final_path[0] = '\0'; // Initialize as empty string
+
+    // Concatenate all segments
+    for (int i = 0; i < count; i++)
+    {
+        if (segments[i])
+        {
+            strcat(final_path, segments[i]);
+        }
+    }
+
+    return final_path;
+}
+
+char *find_best_path(Graph *graph, WordPosition *word_positions, int word_count, int GRID_SIZE)
+{
+    Node **visit_order = malloc((word_count * 2 + 2) * sizeof(Node *));
+    if (!visit_order)
+    {
+        printf("Memory allocation failed!\n");
+        return NULL;
+    }
+
+    visit_order[0] = graph->start;
+
+    // Compute the best order to visit words
+    find_best_word_order(graph, word_positions, word_count, &visit_order[1], GRID_SIZE);
+
+    // Array to store path segments
+    char **path_segments = malloc((word_count * 2 + 1) * sizeof(char *));
+    if (!path_segments)
+    {
+        printf("Memory allocation failed!\n");
+        free(visit_order);
+        return NULL;
+    }
+
+    printf("\nOptimal Path:\n");
+    for (int i = 0; i < word_count * 2 + 1; i++)
+    {
+        path_segments[i] = find_shortest_path(graph, visit_order[i], visit_order[i + 1], GRID_SIZE);
+
+        // Remove redundant start & end nodes from paths
+        if (i > 0)
+        {
+            char *prev_path = path_segments[i - 1];
+            char *curr_path = path_segments[i];
+
+            // Ensure we don’t repeat the last character of prev_path and first of curr_path
+            if (prev_path && curr_path)
+            {
+                int prev_len = strlen(prev_path);
+                int curr_len = strlen(curr_path);
+
+                // If last char of prev_path matches first char of curr_path, remove duplicate
+                if (prev_len > 0 && curr_len > 0 && prev_path[prev_len - 1] == curr_path[0])
+                {
+                    memmove(curr_path, curr_path + 1, curr_len); // Shift left to remove duplicate
+                }
+            }
+        }
+    }
+
+    // Concatenate all path segments into a single path
+    char *final_path = concatenate_paths(path_segments, word_count * 2 + 1);
+    if (final_path)
+    {
+        printf("%s\n", final_path);
+    }
+
+    // Free allocated memory
+    for (int i = 0; i < word_count * 2 + 1; i++)
+    {
+        free(path_segments[i]);
+    }
+    free(path_segments);
+    free(visit_order);
+    return final_path;
+}
+
+void draw_graph(SDL_Renderer *renderer, Graph *graph, Player *player, TTF_Font *font, int GRID_SIZE)
 {
     // Draw all the cells in the grid
     for (int i = 0; i < GRID_SIZE; i++)
@@ -706,7 +918,7 @@ void draw_graph(SDL_Renderer *renderer, Graph *graph, Player *player, TTF_Font *
     SDL_RenderDrawRect(renderer, &endRect);
 }
 
-int show_difficulty_selection(SDL_Renderer *renderer, TTF_Font *font)
+int show_difficulty_selection(SDL_Renderer *renderer, TTF_Font *font, int WINDOW_SIZE)
 {
     SDL_Event event;
     int running = 1;
@@ -773,7 +985,35 @@ int show_difficulty_selection(SDL_Renderer *renderer, TTF_Font *font)
     return 1;
 }
 
-int show_menu(SDL_Renderer *renderer, TTF_Font *font)
+// calucl score
+int calculate_score(char *path, WordPosition *word_positions, int word_count, int best_path_length)
+{
+    int score = 0;
+    int all_words_found = 1; // Assume all words are found
+    for (int i = 0; i < word_count; i++)
+    {
+        const char *word = word_positions[i].word;
+        char *found = strstr(path, word);
+        if (found)
+        {
+            score += strlen(word) * 3;
+        }
+        else
+        {
+            all_words_found = 0; // If any word is not found, set this to 0
+        }
+    }
+
+    // If all words are found and the path length is the best path length, add 50 bonus points
+    if (all_words_found && strlen(path) <= best_path_length)
+    {
+        score += 50;
+    }
+
+    return score;
+}
+
+int show_menu(SDL_Renderer *renderer, TTF_Font *font, int WINDOW_SIZE)
 {
     SDL_Event event;
     int running = 1;
@@ -798,7 +1038,7 @@ int show_menu(SDL_Renderer *renderer, TTF_Font *font)
                     if (selected == 0)
                     {
                         // New game selected, show difficulty selection
-                        int difficulty = show_difficulty_selection(renderer, font);
+                        int difficulty = show_difficulty_selection(renderer, font, WINDOW_SIZE);
                         return difficulty;
                     }
                     else
@@ -856,15 +1096,17 @@ int show_menu(SDL_Renderer *renderer, TTF_Font *font)
     return 1;
 }
 
+
+
 int main(int argc, char *args[])
 {
     srand(time(NULL));
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
 
-    SDL_Window *window = SDL_CreateWindow("Maze", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_SIZE, WINDOW_SIZE, SDL_WINDOW_SHOWN);
+    SDL_Window *window = SDL_CreateWindow("Maze", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 800, SDL_WINDOW_SHOWN);
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    TTF_Font *font = TTF_OpenFont("Poppins-Italic.ttf", 24);
+    TTF_Font *font = TTF_OpenFont("Arial.ttf", 24);
 
     if (!font)
     {
@@ -872,7 +1114,7 @@ int main(int argc, char *args[])
         return 1;
     }
 
-    int difficulty = show_menu(renderer, font);
+    int difficulty = show_menu(renderer, font, 800);
     printf("Selected difficulty: %d\n", difficulty);
 
     if (difficulty == -1)
@@ -883,8 +1125,26 @@ int main(int argc, char *args[])
         return 0;
     }
 
-    Graph *graph = create_graph();
-    initialize_graph(graph);
+    // Set GRID_SIZE based on difficulty
+    int GRID_SIZE;
+    switch (difficulty)
+    {
+    case 0: // Easy
+        GRID_SIZE = 10;
+        break;
+    case 1: // Medium
+        GRID_SIZE = 15;
+        break;
+    case 2: // Hard
+        GRID_SIZE = 18;
+        break;
+    }
+
+    int WINDOW_SIZE = GRID_SIZE * CELL_SIZE;
+    SDL_SetWindowSize(window, WINDOW_SIZE, WINDOW_SIZE);
+
+    Graph *graph = create_graph(GRID_SIZE);
+    initialize_graph(graph, GRID_SIZE);
 
     // Load words from file
     char words[1000][20];
@@ -894,14 +1154,20 @@ int main(int argc, char *args[])
     {
         word_ptrs[i] = words[i];
     }
-    place_words(graph, word_ptrs, &word_count, 5);
+    WordPosition word_positions[5];
+    int actual_word_count = 0;
+
+    place_words(graph, word_ptrs, word_positions, &actual_word_count, word_count, GRID_SIZE);
+
+    divide_graph(graph, 0, 0, GRID_SIZE - 1, GRID_SIZE - 1, GRID_SIZE);
+    add_random_letters(graph, GRID_SIZE);
     set_start_end(graph);
 
-    divide_graph(graph, 0, 0, GRID_SIZE - 1, GRID_SIZE - 1);
-    add_random_letters(graph);
+    char *path = find_shortest_path(graph, graph->start, graph->end, GRID_SIZE);
+    printf("Shortest MINIMAL path: %s\n", enlever_premier_dernier(path));
 
-    char *path = find_shortest_path(graph, graph->start, graph->end);
-    printf("Shortest path: %s\n", path);
+    char *final_best_path = find_best_path(graph, word_positions, 5, GRID_SIZE);
+    printf("Final best path: %s\n", enlever_premier_dernier(final_best_path));
 
     Player player;
     initialize_player(&player, graph);
@@ -919,6 +1185,15 @@ int main(int argc, char *args[])
             {
                 running = 0;
             }
+            else if (event.type == SDL_WINDOWEVENT)
+            {
+                if (event.window.event == SDL_WINDOWEVENT_RESIZED)
+                {
+                    int new_width = event.window.data1;
+                    int new_height = event.window.data2;
+                    SDL_SetWindowSize(window, new_width, new_height);
+                }
+            }
         }
 
         Uint32 currentTime = SDL_GetTicks();
@@ -927,28 +1202,37 @@ int main(int argc, char *args[])
             const Uint8 *keystate = SDL_GetKeyboardState(NULL);
 
             if (keystate[SDL_SCANCODE_KP_8])
-                move_player(&player, graph, -1, 0);
+                move_player(&player, graph, -1, 0, GRID_SIZE);
             if (keystate[SDL_SCANCODE_KP_2])
-                move_player(&player, graph, 1, 0);
+                move_player(&player, graph, 1, 0, GRID_SIZE);
             if (keystate[SDL_SCANCODE_KP_4])
-                move_player(&player, graph, 0, -1);
+                move_player(&player, graph, 0, -1, GRID_SIZE);
             if (keystate[SDL_SCANCODE_KP_6])
-                move_player(&player, graph, 0, 1);
+                move_player(&player, graph, 0, 1, GRID_SIZE);
             if (keystate[SDL_SCANCODE_KP_7])
-                move_player(&player, graph, -1, -1);
+                move_player(&player, graph, -1, -1, GRID_SIZE);
             if (keystate[SDL_SCANCODE_KP_9])
-                move_player(&player, graph, -1, 1);
+                move_player(&player, graph, -1, 1, GRID_SIZE);
             if (keystate[SDL_SCANCODE_KP_1])
-                move_player(&player, graph, 1, -1);
+                move_player(&player, graph, 1, -1, GRID_SIZE);
             if (keystate[SDL_SCANCODE_KP_3])
-                move_player(&player, graph, 1, 1);
+                move_player(&player, graph, 1, 1, GRID_SIZE);
 
             lastMoveTime = currentTime;
         }
 
+        // Check if player reached the end point
+        if (player.x == graph->end->x && player.y == graph->end->y)
+        {
+            printf("Congratulations! You've reached the end point.\n");
+            int score = calculate_score(player.path, word_positions, 5, strlen(final_best_path) - 2);
+            printf("Score: %d\n", score);
+            running = 0;
+        }
+
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
-        draw_graph(renderer, graph, &player, font);
+        draw_graph(renderer, graph, &player, font, GRID_SIZE);
         SDL_RenderPresent(renderer);
     }
 
