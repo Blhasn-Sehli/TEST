@@ -421,22 +421,15 @@ void remove_edge(Node *node1, Node *node2)
 }
 
 // Function to add a wall by removing edges and marking the grid
-void add_wall(Graph *graph, int x1, int y1, int x2, int y2, int GRID_SIZE)
-{
+void add_wall(Graph *graph, int x1, int y1, int x2, int y2, int GRID_SIZE){
     int passage_x = x1 + rand() % (x2 - x1 + 1);
     int passage_y = y1 + rand() % (y2 - y1 + 1);
-
-    if (x1 == x2)
-    { // Vertical wall
-        for (int y = y1; y <= y2; y++)
-        {
-            if (y != passage_y)
-            { // Leave a passage
+    if (x1 == x2){ // Vertical wall
+        for (int y = y1; y <= y2; y++){
+            if (y != passage_y){ // Leave a passage
                 Node *node = graph->nodes[x1 * GRID_SIZE + y];
-                if (node->letter == ' ')
-                { // Only mark as a wall if it's empty
+                if (node->letter == ' '){ // Only mark as a wall if it's empty
                     node->letter = '#';
-
                     // Remove edges to disconnect from neighbors
                     if (x1 > 0)
                         remove_edge(node, graph->nodes[(x1 - 1) * GRID_SIZE + y]); // Left
